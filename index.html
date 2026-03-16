@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart PDF & Image Merger</title>
+    
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #6366f1;
+            --secondary: #10b981;
+            --dark: #1e293b;
+            --light: #f8fafc;
+        }
+
+        * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+        body {
+            background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 15px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            width: 100%;
+            max-width: 600px;
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        h2 { color: var(--dark); text-align: center; margin-bottom: 8px; font-size: 1.5rem; }
+        p.subtitle { text-align: center; color: #64748b; font-size: 0.9rem; margin-bottom: 25px; }
+
+        /* Dropzone Modern */
+        .dropzone {
+            border: 2px dashed #cbd5e1;
+            border-radius: 16px;
+            padding: 40px 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            background: #ffffff;
+            cursor: pointer;
+        }
+
+        .dropzone:hover { border-color: var(--primary); background: #f5f7ff; }
+
+        .dropzone i { font-size: 3rem; color: var(--primary); margin-bottom: 15px; display: block; }
+
+        /* File List */
+        #file-list {
+            margin-top: 20px;
+            max-height: 250px;
+            overflow-y: auto;
+            border-radius: 12px;
+        }
+
+        .file-card {
+            background: white;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid #e2e8f0;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .file-info { display: flex; align-items: center; gap: 10px; }
+        .file-info b { font-size: 0.85rem; color: var(--dark); display: block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; text-transform: uppercase; font-weight: bold; }
+        .badge-pdf { background: #fee2e2; color: #ef4444; }
+        .badge-img { background: #dcfce7; color: #16a34a; }
+
+        /* Progress Bar */
+        .progress-container {
+            display: none;
+            margin-top: 20px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+            height: 10px;
+        }
+
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: var(--primary);
+            transition: width 0.3s ease;
+        }
+
+        /* Action Buttons */
+        .actions { margin-top: 25px; }
+        
+        button {
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-merge { background: var(--primary); color: white; box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39); }
+        .btn-merge:hover { background: #4f46e5; transform: translateY(-1px); }
+        .btn-merge:disabled { background: #94a3b8; cursor: not-allowed; box-shadow: none; }
+
+        .btn-reset { background: transparent; color: #64748b; margin-top: 10px; font-size: 0.8rem; }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            .container { padding: 20px; }
+            h2 { font-size: 1.25rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Smart Merger</h2>
+    <p class="subtitle">Gabungkan PDF dan Gambar (JPG/PNG) menjadi satu PDF.</p>
+
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+        <i>📁</i>
+        <strong>Pilih Berkas</strong>
+        <span style="display: block; font-size: 0.8rem; color: #94a3b8;">PDF, JPG, atau PNG</span>
+    </div>
+
+    <input type="file" id="file-input" accept=".pdf, .jpg, .jpeg, .png" multiple style="display: none;">
+
+    <div id="file-list"></div>
+
+    <div class="progress-container" id="progress-container">
+        <div id="progress-bar"></div>
+    </div>
+
+    <div class="actions">
+        <button id="merge-btn" class="btn-merge" onclick="processFiles()" disabled>Gabungkan Dokumen</button>
+        <button class="btn-reset" onclick="location.reload()">Reset Semua</button>
+    </div>
+
+    <p id="status-text" style="text-align:center; font-size: 0.8rem; margin-top: 15px; color: var(--primary);"></p>
+</div>
+
+<script>
+    let selectedFiles = [];
+
+    const fileInput = document.getElementById('file-input');
+    const fileListDiv = document.getElementById('file-list');
+    const mergeBtn = document.getElementById('merge-btn');
+    const progressBar = document.getElementById('progress-bar');
+    const progressContainer = document.getElementById('progress-container');
+    const statusText = document.getElementById('status-text');
+
+    fileInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
+        addFiles(files);
+    });
+
+    function addFiles(files) {
+        files.forEach(file => {
+            if (!selectedFiles.find(f => f.name === file.name)) {
+                selectedFiles.push(file);
+            }
+        });
+        renderFileList();
+    }
+
+    function renderFileList() {
+        fileListDiv.innerHTML = '';
+        selectedFiles.forEach((file, index) => {
+            const isPdf = file.type === 'application/pdf';
+            const card = document.createElement('div');
+            card.className = 'file-card';
+            card.innerHTML = `
+                <div class="file-info">
+                    <span class="badge ${isPdf ? 'badge-pdf' : 'badge-img'}">${isPdf ? 'PDF' : 'IMG'}</span>
+                    <b>${file.name}</b>
+                </div>
+                <span style="color: #ef4444; cursor:pointer; font-weight:bold;" onclick="removeFile(${index})">✕</span>
+            `;
+            fileListDiv.appendChild(card);
+        });
+        mergeBtn.disabled = selectedFiles.length < 2;
+    }
+
+    function removeFile(index) {
+        selectedFiles.splice(index, 1);
+        renderFileList();
+    }
+
+    async function processFiles() {
+        mergeBtn.disabled = true;
+        progressContainer.style.display = 'block';
+        statusText.innerText = "Memulai penggabungan...";
+        
+        try {
+            const mergedPdf = await PDFLib.PDFDocument.create();
+            
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                const percent = Math.round(((i + 1) / selectedFiles.length) * 100);
+                progressBar.style.width = percent + '%';
+                statusText.innerText = `Memproses: ${file.name}...`;
+
+                const arrayBuffer = await file.arrayBuffer();
+
+                if (file.type === 'application/pdf') {
+                    const pdf = await PDFLib.PDFDocument.load(arrayBuffer);
+                    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                    copiedPages.forEach(page => mergedPdf.addPage(page));
+                } else {
+                    // Jika file adalah Gambar (JPG/PNG)
+                    let image;
+                    if (file.type === 'image/jpeg' || file.type === 'image/jpg') {
+                        image = await mergedPdf.embedJpg(arrayBuffer);
+                    } else if (file.type === 'image/png') {
+                        image = await mergedPdf.embedPng(arrayBuffer);
+                    }
+
+                    if (image) {
+                        const page = mergedPdf.addPage([image.width, image.height]);
+                        page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+                    }
+                }
+            }
+
+            statusText.innerText = "Menyimpan file...";
+            const pdfBytes = await mergedPdf.save();
+            download(pdfBytes, "Hasil_Merge_" + Date.now() + ".pdf");
+            
+            statusText.innerText = "✅ Selesai! File berhasil diunduh.";
+        } catch (error) {
+            console.error(error);
+            statusText.innerText = "❌ Terjadi kesalahan proses.";
+        } finally {
+            mergeBtn.disabled = false;
+        }
+    }
+
+    function download(data, filename) {
+        const blob = new Blob([data], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    // Drag & Drop Handling
+    const dropzone = document.getElementById('dropzone');
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.style.borderColor = "#6366f1"; });
+    dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = "#cbd5e1"; });
+    dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.style.borderColor = "#cbd5e1";
+        addFiles(Array.from(e.dataTransfer.files));
+    });
+</script>
+
+</body>
+</html>
